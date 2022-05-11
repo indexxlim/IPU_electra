@@ -7,7 +7,11 @@ import transformers
 from transformers import AutoConfig, PreTrainedModel
 import poptorch
 
-from modeling_electra import ElectraModel, ElectraForMaskedLM, ElectraForPreTraining
+from modeling_electra import ElectraModel, \
+                             ElectraForMaskedLM, \
+                             ElectraForPreTraining, \
+                             ElectraForQuestionAnswering, \
+                             ElectraForTokenClassification
 from ipu_configuration import IPUConfig
 
 
@@ -423,7 +427,18 @@ class PipelinedElectraForMaskedLM(ElectraForMaskedLM, PipelineMixin):
             )
 
 # Subclass the HuggingFace ElectraForQuestionAnswering model
-class PipelinedElectraForQuestionAnswering(transformers.ElectraForQuestionAnswering, ElectraPipelineMixin):
+class PipelinedElectraForQuestionAnswering(ElectraForQuestionAnswering, ElectraPipelineMixin):
+    '''
+    Pipeling ElectraForQuestionAnswering
+    Recommanded usage
+    
+    ```
+    model = PipelinedElectraForQuestionAnswering.from_transformers(gpu_model, ipu_config)
+    ```
+    model = PipelinedElectraForQuestionAnswering.from_pretrained_transformers(config.train_config.model_name_or_path, train_ipu_config, config=model_config)
+    ```
+
+    '''
     def parallelize(self):
         super().parallelize()
         last_ipu = len(self.ipu_config.layers_per_ipu) - 1
@@ -446,3 +461,38 @@ class PipelinedElectraForQuestionAnswering(transformers.ElectraForQuestionAnswer
             return final_loss, output.start_logits, output.end_logits
         else:
             return output.start_logits, output.end_logits
+
+# For Named Entity Recognition
+class PipelinedElectraForTokenClassification(ElectraForTokenClassification, ElectraPipelineMixin):
+    '''
+    Pipeling ElectraForTokenClassification (for the NER)
+    Recommanded usage
+
+    ```
+    model = PipelinedElectraForTokenClassification.from_transformers(gpu_model, ipu_config)
+    ```
+    model = PipelinedElectraForTokenClassification.from_pretrained_transformers(model_name_or_path, train_ipu_config, config=model_config)
+    ```
+    '''
+    
+
+    def parallelize(self):
+        super().parallelize()
+        last_ipu = len(self.ipu_config.layers_per_ipu) - 1
+        print(f"classifier layer --> IPU {last_ipu}")
+        self.classifier = poptorch.BeginBlock(self.classifier, "classifier", ipu_ids=last_ipu)
+        return self
+
+    def forward(self, input_ids, token_type_ids):
+        inputs = {
+            "input_ids": input_ids,
+            #"attention_mask": attention_mask,
+            "token_type_ids": token_type_ids
+        }
+        output = super().forward(**inputs)
+        if self.training:
+            final_loss = poptorch.identity_loss(output.loss, redunction="none")
+            return final_loss, output.logits
+        else:
+            return output.logits
+    

@@ -3,8 +3,6 @@ import time
 import yaml
 
 import torch
-import torch.nn as nn
-import numpy as np
 import transformers
 from datasets import load_dataset, load_metric
 from tqdm.auto import tqdm, trange
@@ -20,9 +18,16 @@ from finetune.squad_preprocessing import prepare_train_features, \
 from pipeline_electra import PipelinedElectraForQuestionAnswering
 
 '''
-### Get model
+Set Option
 '''
 def ipu_options(gradient_accumulation, replication_factor, device_iterations, train_option, seed=42):
+    '''
+    Set IPU Options 
+    Batgch Parameters to watch out 
+        1. micro_batch_size
+        2. replication_factor
+        3. device_iterations
+    '''
     opts = poptorch.Options()
     opts.randomSeed(seed)
     opts.deviceIterations(device_iterations)
@@ -197,6 +202,7 @@ def main():
     #                                     hidden_dropout_prob=0.1,
     #                                     attention_probs_dropout_prob=0.1,
     #                                     layer_norm_eps=1e-12)
+    
     model_config = transformers.ElectraConfig.from_pretrained(config.train_config.model_name_or_path)
     train_ipu_config = {
         "layers_per_ipu": config.train_config.train_layers_per_ipu,
