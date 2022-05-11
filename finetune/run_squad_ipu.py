@@ -76,17 +76,6 @@ def ipu_options(gradient_accumulation, replication_factor, device_iterations, tr
         opts.connectionType(poptorch.ConnectionType.OnDemand)
     return opts
 
-def ipu_validataion_options(replication_factor, device_iterations):
-    opts = poptorch.Options()
-    opts.randomSeed(42)
-    opts.deviceIterations(device_iterations)
-
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement)
-    )
-
-    opts.Precision.enableStochasticRounding(False)
-
 def get_optimizer(model):
     # Do not apply weight_decay for one-dimensional parameters
     regularized_params = []
