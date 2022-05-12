@@ -97,9 +97,9 @@ def get_optimizer(model):
         {"params": non_regularized_params, "weight_decay": 0}
     ]
     optimizer = poptorch.optim.AdamW(params,
-                                     lr=1e-4,
+                                     lr=5e-5,
                                      weight_decay=0,
-                                     eps=1e-6,
+                                     eps=1e-8,
                                      bias_correction=True,
                                      loss_scaling=64,
                                      first_order_momentum_accum_type=torch.float16,
@@ -279,7 +279,6 @@ def main():
                                                     "attention_mask": 0,
                                                     "token_type_ids": 0}))
    
-
     raw_predictions = valid(model, val_opts, val_dl, valid_samples_per_iteration)
 
     final_predictions = postprocess_qa_predictions(datasets["validation"],

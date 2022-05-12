@@ -3,6 +3,7 @@ import copy
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import transformers
 from transformers import AutoConfig, PreTrainedModel
 import poptorch
@@ -395,12 +396,23 @@ class PipelinedElectraForPreTraining(ElectraForPreTraining, PipelineMixin):
         super().parallelize()
         #for 
 
+'''
+Inside model layer
+electra = ElectraModel(config)
+generator_predictions = ElectraGeneratorPredictions
+generator_lm_head = nn.Linear(config.embedding_size, config.vocab_size)
+'''
 @register(ElectraForMaskedLM)
-class PipelinedElectraForMaskedLM(ElectraForMaskedLM, PipelineMixin):
+class PipelinedElectraForMaskedLM(ElectraForMaskedLM, ElectraPipelineMixin):
     """
+    This pipelined model has two head layer are generator_predictions and generator_lm_head.
+    Last ipu should leave space
+
     Recommended usage:
     ```
     model = PipelinedElectraForMaskedLM.from_transformers(model, ipu_config)
+    ```
+    model = PipelinedElectraForMaskedLM.from_pretrained_transformers(config.train_config.model_name_or_path, train_ipu_config, config=model_config)
     ```
     """
 
@@ -416,15 +428,33 @@ class PipelinedElectraForMaskedLM(ElectraForMaskedLM, PipelineMixin):
         - Adds recomputation checkpoints
         '''
         super().parallelize()
+        last_ipu = len(self.ipu_config.layers_per_ipu) - 1
+        print(f"Generator Predictions --> IPU {last_ipu}")
+        self.generator_predictions = poptorch.BeginBlock(self.generator_predictions, "Generator Predictions", ipu_id=last_ipu)
+        print(f"Generator LM Head --> IPU {last_ipu}")
+        self.generator_lm_head = poptorch.BeginBlock(self.generator_lm_head, "generator LM Head", ipu_id=last_ipu)
+        return self
+    def forward(self, input_ids, attention_mask, token_type_ids, labels=None):
+        if self.training:
+            generator_hidden_states = self.electra(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
+            generator_sequence_output = generator_hidden_states[0]
 
-        if self.ipu_config.embedding_serialization_factor > 1:
-            serialized_decoder = SerializedLinear(
-                self.config.hidden_size,
-                self.config.vocab_size,
-                self.ipu_config.embedding_serialization_factor,
-                bias=True,
-                mode=poptorch.MatMulSerializationMode.OutputChannels
+            prediction_scores = self.generator_predictions(generator_sequence_output)
+            prediction_scores = self.generator_lm_head(prediction_scores)
+
+            loss_fct = nn.CrossEntropyLoss()
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)).float()
+
+            return (masked_lm_loss,)
+        else:
+            return super().forward(
+                input_ids=input_ids, 
+                attention_mask=attention_mask, 
+                token_type_ids=token_type_ids, 
+                labels=labels, 
+                return_dict=False 
             )
+    
 
 # Subclass the HuggingFace ElectraForQuestionAnswering model
 class PipelinedElectraForQuestionAnswering(ElectraForQuestionAnswering, ElectraPipelineMixin):
@@ -437,8 +467,8 @@ class PipelinedElectraForQuestionAnswering(ElectraForQuestionAnswering, ElectraP
     ```
     model = PipelinedElectraForQuestionAnswering.from_pretrained_transformers(config.train_config.model_name_or_path, train_ipu_config, config=model_config)
     ```
-
     '''
+
     def parallelize(self):
         super().parallelize()
         last_ipu = len(self.ipu_config.layers_per_ipu) - 1
@@ -467,14 +497,13 @@ class PipelinedElectraForTokenClassification(ElectraForTokenClassification, Elec
     '''
     Pipeling ElectraForTokenClassification (for the NER)
     Recommanded usage
-
     ```
     model = PipelinedElectraForTokenClassification.from_transformers(gpu_model, ipu_config)
     ```
     model = PipelinedElectraForTokenClassification.from_pretrained_transformers(model_name_or_path, train_ipu_config, config=model_config)
     ```
     '''
-    
+
 
     def parallelize(self):
         super().parallelize()
@@ -491,7 +520,7 @@ class PipelinedElectraForTokenClassification(ElectraForTokenClassification, Elec
         }
         output = super().forward(**inputs)
         if self.training:
-            final_loss = poptorch.identity_loss(output.loss, redunction="none")
+            final_loss = poptorch.identity_loss(output.loss, reduction="none")
             return final_loss, output.logits
         else:
             return output.logits

@@ -304,3 +304,65 @@ class IPUConfig(BaseConfig):
                 )
 
             setattr(self, k, v)
+
+def ipu_options(gradient_accumulation, replication_factor, device_iterations, train_option, seed=42):
+    '''
+    Set IPU Options 
+    Batgch Parameters to watch out 
+        1. micro_batch_size
+        2. replication_factor
+        3. device_iterations
+        ...
+    '''
+    opts = poptorch.Options()
+    opts.randomSeed(seed)
+    opts.deviceIterations(device_iterations)
+    
+    # Use Pipelined Execution
+    opts.setExecutionStrategy(
+        poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
+
+    # Use Stochastic Rounding
+    opts.Precision.enableStochasticRounding(train_option)
+    
+    # Half precision partials for matmuls and convolutions
+    opts.Precision.setPartialsType(torch.float16)
+
+    opts.replicationFactor(replication_factor)
+    
+    opts.Training.gradientAccumulation(gradient_accumulation)
+    
+    # Return all results from IPU to host
+    opts.outputMode(poptorch.OutputMode.All)
+    
+    # Cache compiled executable to disk
+    opts.enableExecutableCaching("./exe_cache")
+
+    if train_option:
+        # On-chip Replicated Tensor Sharding of Optimizer State
+        opts.TensorLocations.setOptimizerLocation(
+            poptorch.TensorLocationSettings()
+            # Optimizer state lives on IPU
+            .useOnChipStorage(True)
+            # Optimizer state sharded between replicas with zero-redundancy
+            .useReplicatedTensorSharding(True))
+
+        # Available Transcient Memory For matmuls and convolutions operations
+        opts.setAvailableMemoryProportion({f"IPU{i}": mp
+                                        for i, mp in enumerate([0.08,0.28,0.32,0.32,0.36,0.38,0.4,0.1])})
+        
+        ## Advanced performance options ##
+
+        # Only stream needed tensors back to host
+        opts._Popart.set("disableGradAccumulationTensorStreams", True)
+        # Copy inputs and outputs as they are needed
+        opts._Popart.set("subgraphCopyingStrategy", int(popart.SubgraphCopyingStrategy.JustInTime))
+        # Parallelize optimizer step update
+        opts._Popart.set("accumulateOuterFragmentSettings.schedule",
+                        int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
+        opts._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
+        # Limit number of sub-graphs that are outlined (to preserve memory)
+        opts._Popart.set("outlineThreshold", 10.0)
+        # Only attach to IPUs after compilation has completed.
+        opts.connectionType(poptorch.ConnectionType.OnDemand)
+    return opts            

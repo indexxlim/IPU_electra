@@ -4,7 +4,7 @@ import collections
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-import nltk  # Here to have a nice missing dependency error message early on
+import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader, RandomSampler, SubsetRandomSampler
 
@@ -15,71 +15,36 @@ _is_torch_generator_available = False
 
 class SummaryDataset(Dataset):
     def __init__(self, data_path):
-        with open(data_path, 'r') as json_file:
-            data= json.load(json_file)
-        self.contexts = []
+        data = pd.read_csv(data_path, sep='\t', names = ['text', 'label'])
+        
+        self.texts = []
         self.labels = []
-        self.summarys = []
-        for i_data in data:
-            if 'label' in i_data:
-                for i in i_data['label'].keys():
-                    label = ''
-                    for label_list in list(i_data['label'][i]['evidence'].values()):
-                        label += ' '.join(label_list)+ ' '
-                    self.labels.append(label[:-1])
-                    self.summarys.append(i_data['label'][i]['summary'])
-            for agenda in i_data['context'].keys():
-                context = ''
-                for line in i_data['context'][agenda]:
-                    context += i_data['context'][agenda][line]
-                    context += ' '
-                self.contexts.append(context[:-1])
+        for i in range(len(data)):
+            self.texts.append(data.iloc[i].text)
+            self.labels.append(data.iloc[i].label)
 
+                
+    def labels2id(self, label):
+        labels_lst = ["O",
+                "PER-B", "PER-I", "FLD-B", "FLD-I", "AFW-B", "AFW-I", "ORG-B", "ORG-I",
+                "LOC-B", "LOC-I", "CVL-B", "CVL-I", "DAT-B", "DAT-I", "TIM-B", "TIM-I",
+                "NUM-B", "NUM-I", "EVT-B", "EVT-I", "ANM-B", "ANM-I", "PLT-B", "PLT-I",
+                "MAT-B", "MAT-I", "TRM-B", "TRM-I"]
+        labels_dict = {label:i for i, label in enumerate(labels_lst)}
+        try:
+            id_value = labels_dict[label]
+        except:
+            raise Exception('Not in NER labels')
+        return id_value
 
     def __getitem__(self, index):
-        if len(self.summarys)>0:
-            return {'context':self.contexts[index], 'label':self.labels[index], 'summary':self.summarys[index]}
-        else:
-            return {'context':self.contexts[index]}
-
+        return {'text':self.texts[index], 'label':self.labels[index]}
+        
     def __len__(self):
         return len(self.contexts)
     
-    
 
-summarization_name_mapping = {
-    "amazon_reviews_multi": ("review_body", "review_title"),
-    "big_patent": ("description", "abstract"),
-    "cnn_dailymail": ("article", "highlights"),
-    "orange_sum": ("text", "summary"),
-    "pn_summary": ("article", "summary"),
-    "psc": ("extract_text", "summary_text"),
-    "samsum": ("dialogue", "summary"),
-    "thaisum": ("body", "summary"),
-    "xglue": ("news_body", "news_title"),
-    "xsum": ("document", "summary"),
-    "wiki_summary": ("article", "highlights"),
-}
 
-def shift_tokens_right(input_ids, pad_token_id, eos_token_id):
-    """
-        Shift input ids one token to the right, and wrap the last non pad token (usually <eos>).
-        decoder input: <eos><sos> tok1 tok2 … tokn
-        target:<sos> tok1 tok2 … tokn <eos>
-        https://github.com/huggingface/transformers/issues/7961
-    """
-    prev_output_tokens = input_ids.clone()
-    #index_of_eos = (input_ids.ne(pad_token_id).sum(dim=1) - 1).unsqueeze(-1)
-    prev_output_tokens[:, 0] = torch.tensor(eos_token_id)
-    prev_output_tokens[:, 1:] = input_ids[:, :-1]
-    
-    # last_index = prev_output_tokens.ne(pad_token_id).sum(dim=1)-1
-    # for i, last_i in enumerate(last_index):
-    #     prev_output_tokens[i][last_i] = pad_token_id
-    assert pad_token_id is not None, "self.tokenizer.pad_token_id has to be defined."
-    # replace possible -100 values in labels by `pad_token_id`
-    return prev_output_tokens
-    
 
 @dataclass
 class SummaryCollator:

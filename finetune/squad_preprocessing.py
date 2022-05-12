@@ -30,6 +30,7 @@ config_file = 'finetune/squad_configurations.yaml'
 config = EasyDict(yaml.load(open(config_file).read(), Loader=yaml.Loader))
 
 tokenizer = ElectraTokenizerFast.from_pretrained(config.tokenizer_name)
+#tokenizer = ElectraTokenizerFast.from_pretrained("bhadresh-savani/electra-base-squad2")
 
 # `prepare_train_features` comes unmodified from
 # https://github.com/huggingface/transformers/blob/v4.9.1/examples/pytorch/question-answering/run_qa.py
