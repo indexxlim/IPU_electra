@@ -10,7 +10,7 @@ train_config:
   train_layers_per_ipu: [2,3,4,3]
   train_recompute_checkpoint_every_layer: True
   train_embedding_serialization_factor: 1
-  saved_model_name: "checkpoints/squad_base_4x2"
+  saved_model_name: "checkpoints/squad_base_4x1"
 valid_config:
   valid_micro_batch_size: 4
   valid_replication_factor: 4

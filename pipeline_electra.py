@@ -381,7 +381,9 @@ class PipelinedElectraForPreTraining(ElectraForPreTraining, PipelineMixin):
     Recommanded usage:
     ```
     model = PipelinedElectraForPreTraining.from_transformers(model, ipu_config)
+    model.parallelize().half().train()
     ```
+    
     """
     def __init__(self, config):
         super().__init__(config)
@@ -414,13 +416,14 @@ class PipelinedElectraForMaskedLM(ElectraForMaskedLM, ElectraPipelineMixin):
     ```
     model = PipelinedElectraForMaskedLM.from_pretrained_transformers(config.train_config.model_name_or_path, train_ipu_config, config=model_config)
     ```
+    model.parallelize().half().train()
     """
 
     def __init__(self, config):
         super().__init__(config)
         self.gather_indices = OnehotGather()
 
-    def parallelism(self):
+    def parallelize(self):
         '''
         Transform the model to run in an IPU pipeline.
         - Adds pipeline stages to the model
@@ -454,7 +457,7 @@ class PipelinedElectraForMaskedLM(ElectraForMaskedLM, ElectraPipelineMixin):
                 labels=labels, 
                 return_dict=False 
             )
-    
+
 
 # Subclass the HuggingFace ElectraForQuestionAnswering model
 class PipelinedElectraForQuestionAnswering(ElectraForQuestionAnswering, ElectraPipelineMixin):
@@ -467,6 +470,7 @@ class PipelinedElectraForQuestionAnswering(ElectraForQuestionAnswering, ElectraP
     ```
     model = PipelinedElectraForQuestionAnswering.from_pretrained_transformers(config.train_config.model_name_or_path, train_ipu_config, config=model_config)
     ```
+    model.parallelize().half().train()
     '''
 
     def parallelize(self):
@@ -502,8 +506,8 @@ class PipelinedElectraForTokenClassification(ElectraForTokenClassification, Elec
     ```
     model = PipelinedElectraForTokenClassification.from_pretrained_transformers(model_name_or_path, train_ipu_config, config=model_config)
     ```
+    model.parallelize().half().train()
     '''
-
 
     def parallelize(self):
         super().parallelize()
@@ -512,12 +516,13 @@ class PipelinedElectraForTokenClassification(ElectraForTokenClassification, Elec
         self.classifier = poptorch.BeginBlock(self.classifier, "classifier", ipu_ids=last_ipu)
         return self
 
-    def forward(self, input_ids, token_type_ids):
+    def forward(self, input_ids, token_type_ids, attention_mask):
         inputs = {
             "input_ids": input_ids,
-            #"attention_mask": attention_mask,
-            "token_type_ids": token_type_ids
+            "token_type_ids": token_type_ids,
+            "attention_mask": attention_mask
         }
+        
         output = super().forward(**inputs)
         if self.training:
             final_loss = poptorch.identity_loss(output.loss, reduction="none")

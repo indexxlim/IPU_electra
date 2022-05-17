@@ -193,16 +193,6 @@ def main():
         load_from_cache_file=True,
     )
 
-    # Electra-base configuration
-    # model_config = transformers.ElectraConfig(embedding_size=768,
-    #                                     hidden_size=768,
-    #                                     intermediate_size = 1024*3,
-    #                                     num_hidden_layers=12,
-    #                                     num_attention_heads=12,
-    #                                     hidden_dropout_prob=0.1,
-    #                                     attention_probs_dropout_prob=0.1,
-    #                                     layer_norm_eps=1e-12)
-    
     model_config = transformers.ElectraConfig.from_pretrained(config.train_config.model_name_or_path)
     train_ipu_config = {
         "layers_per_ipu": config.train_config.train_layers_per_ipu,
