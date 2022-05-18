@@ -12,6 +12,7 @@ import popart
 import poptorch
 
 from pipeline_electra import PipelinedElectraForTokenClassification
+from dataloader_ner import NERDataset, NERCollator
 
 '''
 Set Option
@@ -165,3 +166,24 @@ def valid(model, opts, val_dl, samples_per_iteration):
     raw_predictions[0] = torch.vstack(raw_predictions[0]).float().numpy()
     raw_predictions[1] = torch.vstack(raw_predictions[1]).float().numpy()
     return raw_predictions
+
+
+def main():
+    config_file = "finetune/ner_configuration.yaml"
+    config = EasyDict(yaml.load(open(config_file).read(), Loader=yaml.loader))
+
+    #data_path = 
+    dataset = NERDataset()
+
+    
+
+
+    dataset = load_dataset()
+
+
+    train()
+
+
+
+if __name__ == "__main__":
+    main()

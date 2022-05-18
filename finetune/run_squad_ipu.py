@@ -97,7 +97,7 @@ def get_optimizer(model):
         {"params": non_regularized_params, "weight_decay": 0}
     ]
     optimizer = poptorch.optim.AdamW(params,
-                                     lr=5e-5,
+                                     lr=5e-6,
                                      weight_decay=0,
                                      eps=1e-8,
                                      bias_correction=True,
@@ -171,7 +171,7 @@ def valid(model, opts, val_dl, samples_per_iteration):
     return raw_predictions
 
 def main():
-    config_file = 'finetune/squad_configurations.yaml'
+    config_file = "finetune/squad_configurations.yaml"
     config = EasyDict(yaml.load(open(config_file).read(), Loader=yaml.Loader))
 
     datasets = load_dataset("squad_kor_v1", cache_dir=Path.home() / ".torch./dataset")

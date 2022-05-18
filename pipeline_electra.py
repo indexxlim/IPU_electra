@@ -396,7 +396,7 @@ class PipelinedElectraForPreTraining(ElectraForPreTraining, PipelineMixin):
         - (If enabled) Replaces the word embedding projection with a SerializedLinear layer
         """
         super().parallelize()
-        #for 
+
 
 '''
 Inside model layer
@@ -516,11 +516,11 @@ class PipelinedElectraForTokenClassification(ElectraForTokenClassification, Elec
         self.classifier = poptorch.BeginBlock(self.classifier, "classifier", ipu_ids=last_ipu)
         return self
 
-    def forward(self, input_ids, token_type_ids, attention_mask):
+    def forward(self, input_ids, token_type_ids):#, attention_mask):
         inputs = {
             "input_ids": input_ids,
             "token_type_ids": token_type_ids,
-            "attention_mask": attention_mask
+            #"attention_mask": attention_mask
         }
         
         output = super().forward(**inputs)
