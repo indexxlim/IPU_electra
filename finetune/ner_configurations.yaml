@@ -1,14 +1,16 @@
 tokenizer_name: "monologg/koelectra-base-v3-discriminator"
-data_path: "data/naver-ner"
+train_data_path: "data/naver-ner/train.tsv"
+test_data_path: "data/naver-ner/test.tsv"
 train_config:
   model_name_or_path: "monologg/koelectra-base-v3-discriminator"
   train_global_batch_size: 128
   train_micro_batch_size: 2
   train_replication_factor: 1
   train_device_iterations: 1
-  num_epochs: 4
+  num_epochs: 5
   sequence_length: 384
   train_layers_per_ipu: [2,3,4,3]
+  train_ipu_start_number: 5
   train_recompute_checkpoint_every_layer: True
   train_embedding_serialization_factor: 1
   saved_model_name: "checkpoints/squad_base_4x1"
@@ -17,5 +19,6 @@ valid_config:
   valid_replication_factor: 4
   valid_device_iterations: 2
   valid_layer_per_ipu: [11,13]
+  valid_ipu_start_number: 5
   valid_recompute_checkpoint_every_layer: False
   valid_embedding_serialization_factor: 1

@@ -5,7 +5,7 @@ train_config:
   train_micro_batch_size: 2
   train_replication_factor: 1
   train_device_iterations: 1
-  num_epochs: 4
+  num_epochs: 5
   sequence_length: 384
   train_layers_per_ipu: [2,3,4,3]
   train_recompute_checkpoint_every_layer: True

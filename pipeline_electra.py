@@ -323,6 +323,7 @@ class ElectraPipelineMixin(PipelineMixin):
         """
         super().parallelize()
         layer_ipu = get_layer_ipu(self.ipu_config.layers_per_ipu)
+        
 
         print("--- Device Allocation ---")
         print("Embedding --> IPU 0")
@@ -336,7 +337,7 @@ class ElectraPipelineMixin(PipelineMixin):
         for index, layer in enumerate(self.electra.encoder.layer):
             ipu = layer_ipu[index]
             #self.ipu_config.recompute_checkpoint_every_layer is always True 
-            if index != self.config.num_hidden_layers - 1: 
+            if index != self.config.num_hidden_layers - 1:
                 h = recomputation_checkpoint(layer)
                 self._hooks.append(h)
 
@@ -516,11 +517,12 @@ class PipelinedElectraForTokenClassification(ElectraForTokenClassification, Elec
         self.classifier = poptorch.BeginBlock(self.classifier, "classifier", ipu_ids=last_ipu)
         return self
 
-    def forward(self, input_ids, token_type_ids):#, attention_mask):
+    def forward(self, input_ids, attention_mask, token_type_ids, labels=None):
         inputs = {
             "input_ids": input_ids,
+            "attention_mask": attention_mask,
             "token_type_ids": token_type_ids,
-            #"attention_mask": attention_mask
+            "labels": labels
         }
         
         output = super().forward(**inputs)

@@ -6,9 +6,12 @@ from typing import Any, Dict, Optional, Union
 from logging import logger
 
 import pandas as pd
+import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, RandomSampler, SubsetRandomSampler
 
+from transformers import is_datasets_available
+import datasets
 import poptorch
 from poptorch import Options, OutputMode
 
@@ -47,99 +50,55 @@ class NERDataset(Dataset):
     def __len__(self):
         return len(self.contexts)
 
-
 @dataclass
 class NERCollator:
     def __init__(self, tokenizer, mapping=None):
         self.tokenizer = tokenizer
         self.text = 'text'
-        self.label = 'label'    
+        self.label = 'label'
+        self.pad_token_label_id = -100
+
+        labels_lst = ["O",
+                "PER-B", "PER-I", "FLD-B", "FLD-I", "AFW-B", "AFW-I", "ORG-B", "ORG-I",
+                "LOC-B", "LOC-I", "CVL-B", "CVL-I", "DAT-B", "DAT-I", "TIM-B", "TIM-I",
+                "NUM-B", "NUM-I", "EVT-B", "EVT-I", "ANM-B", "ANM-I", "PLT-B", "PLT-I",
+                "MAT-B", "MAT-I", "TRM-B", "TRM-I"]
+        self.labels_dict = {label:i for i, label in enumerate(labels_lst)}
+
 
     def __call__(self, batch):
         if self.text not in batch[0] or self.label not in batch[0]:
             raise Exception("Error: Undefined data keys")
 
-        sentence = [item[self.text]+self.tokenizer.eos_token for item in batch]
+        sentence = [item[self.text] for item in batch]
 
         source_batch = self.tokenizer.batch_encode_plus(sentence,
                     padding='longest',
+                    is_split_into_words=True,
                     max_length=512,
                     truncation=True, 
+                    return_offsets_mapping=True,
                     return_tensors='pt')
-       
 
-            
+        labels = [[self.labels_dict[la] for la in item[self.label].split()] for item in batch]
+        sequence_length = source_batch.input_ids.shape[1]
+        labels = [label + [self.pad_token_label_id] * (sequence_length-len(label)) for label in labels]
+        
+
         return {'input_ids':source_batch.input_ids,
                  'attention_mask':source_batch.attention_mask,
                  'token_type_ids':source_batch.token_type_ids,
                  'labels': labels,
+                 'offset_mapping': source_batch.offset_mapping,
+                 'sentence': sentence
                  }
-    
-    def custom_encode_plus(self, sentence, tokenizer, return_tensors=None):
 
-        words = sentence.split()
-
-        tokens = []
-        tokens_mask = []
-
-        for word in words:
-            word_tokens = tokenizer.tokenize(word)
-            if not word_tokens:
-                word_tokens = [tokenizer.unk_token]  # For handling the bad-encoded word
-            tokens.extend(word_tokens)
-            tokens_mask.extend([1] + [0] * (len(word_tokens) - 1))
-
-        ids = tokenizer.convert_tokens_to_ids(tokens)
-        len_ids = len(ids)
-        total_len = len_ids + tokenizer.num_special_tokens_to_add()
-        if tokenizer.model_max_length and total_len > tokenizer.model_max_length:
-            ids, _, _ = tokenizer.truncate_sequences(
-                ids,
-                pair_ids=None,
-                num_tokens_to_remove=total_len - tokenizer.model_max_length,
-                truncation_strategy="longest_first",
-                stride=0,
-            )
-
-        sequence = tokenizer.build_inputs_with_special_tokens(ids)
-        token_type_ids = tokenizer.create_token_type_ids_from_sequences(ids)
-        # HARD-CODED: As I know, most of the transformers architecture will be `[CLS] + text + [SEP]``
-        #             Only way to safely cover all the cases is to integrate `token mask builder` in internal library.
-        tokens_mask = [1] + tokens_mask + [1]
-        words = [tokenizer.cls_token] + words + [tokenizer.sep_token]
-
-        encoded_inputs = {}
-        encoded_inputs["input_ids"] = sequence
-        encoded_inputs["token_type_ids"] = token_type_ids
-
-
-        encoded_inputs["input_ids"] = torch.tensor([encoded_inputs["input_ids"]])
-
-        if "token_type_ids" in encoded_inputs:
-            encoded_inputs["token_type_ids"] = torch.tensor([encoded_inputs["token_type_ids"]])
-
-        if "attention_mask" in encoded_inputs:
-            encoded_inputs["attention_mask"] = torch.tensor([encoded_inputs["attention_mask"]])
-
-        elif return_tensors is not None:
-            logger.warning(
-                "Unable to convert output to tensors format {}, PyTorch or TensorFlow is not available.".format(
-                    return_tensors
-                )
-            )
-
-        return encoded_inputs, words, tokens_mask
-        
-        
-
-        
 def get_dataloader(dataset, collator, batch_size=4, shuffle=False):
     data_loader = DataLoader(dataset, 
                               batch_size=batch_size, 
                               shuffle=shuffle, 
                               collate_fn=collator,
                               num_workers=2)
-    
     return data_loader
 
 
@@ -149,7 +108,6 @@ class _WorkerInit:
 
     def __call__(self, worker_id):
         np.random.seed((self.seed + worker_id) % np.iinfo(np.uint32).max)
-
 
 def get_train_sampler(dataset, tokenizer, ipu_config, args) -> Optional[torch.utils.data.Sampler]:
     if not isinstance(dataset, collections.abc.Sized):
@@ -190,13 +148,13 @@ def get_train_sampler(dataset, tokenizer, ipu_config, args) -> Optional[torch.ut
                     [torch.arange(num_examples), torch.randint(0, num_examples, size=(num_missing_examples,))]
                 )
             return SubsetRandomSampler(indices, generator)
-        return RandomSampler(dataset)        
+        return RandomSampler(dataset)
 
-        
+
 def ipu_dataloader(dataset, tokenizer, ipu_config, args ,collator, shuffle=True) -> poptorch.DataLoader:
-    
+
     opts = ipu_config.to_options()
-    
+
     if isinstance(dataset, torch.utils.data.IterableDataset):
         return poptorch.DataLoader(
             opts,
@@ -208,7 +166,7 @@ def ipu_dataloader(dataset, tokenizer, ipu_config, args ,collator, shuffle=True)
             **poptorch_specific_kwargs,
         )
 
-    
+
     should_drop_last = not hasattr(collator, "__wrapped__") and not args.complete_last_batch
     poptorch_specific_kwargs = {
         "drop_last": should_drop_last,  # Not dropping last will end up causing NaN during training if the combined batch size does not divide the number of steps
@@ -216,12 +174,12 @@ def ipu_dataloader(dataset, tokenizer, ipu_config, args ,collator, shuffle=True)
         "mode": args.dataloader_mode,
         "worker_init_fn": _WorkerInit(123),
     }
-    
-    
-    
+
+
+
     train_sampler = get_train_sampler(dataset, tokenizer, ipu_config, args)
 
-    
+
     combined_batch_size = args.per_device_train_batch_size * ipu_config.batch_size_factor()
     rebatched_worker_size = (
         2 * (combined_batch_size // args.dataloader_num_workers)

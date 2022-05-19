@@ -1,5 +1,6 @@
 from pathlib import Path
 import time
+from unicodedata import east_asian_width
 import yaml
 
 import torch
@@ -114,9 +115,7 @@ def train(model, opts, optimizer, train_dl, num_epochs, samples_per_iteration):
     batch = next(iter(train_dl))
     outputs = training_model.compile(batch["input_ids"],
                                      batch["attention_mask"],
-                                     batch["token_type_ids"],
-                                     batch["start_positions"],
-                                     batch["end_positions"])
+                                     batch["token_type_ids"])
     # Training Loop
     for epoch in trange(num_epochs, desc="Epochs"):
         train_iter = tqdm(train_dl)
@@ -126,9 +125,7 @@ def train(model, opts, optimizer, train_dl, num_epochs, samples_per_iteration):
             # This completes a forward+backward+weight update step
             outputs = training_model(batch["input_ids"],
                                      batch["attention_mask"],
-                                     batch["token_type_ids"],
-                                     batch["start_positions"],
-                                     batch["end_positions"])
+                                     batch["token_type_ids"])
 
             # Update the LR and update the poptorch optimizer
             lr_scheduler.step()
@@ -169,20 +166,50 @@ def valid(model, opts, val_dl, samples_per_iteration):
 
 
 def main():
-    config_file = "finetune/ner_configuration.yaml"
+    config_file = "finetune/ner_configurations.yaml"
     config = EasyDict(yaml.load(open(config_file).read(), Loader=yaml.loader))
 
-    #data_path = 
-    dataset = NERDataset()
+    #data_path
+    dataset = NERDataset(config.train_data_path)
+    train_ipu_config = {
+        "layer_per_ipu": config.train_config.train_layers_per_ipu,
+        "recompute_checkpoint_every_layer": config.train_config.train_recopmute_checkpoint_every_layer,
+        "embedding_serialization_factor": config.train_config.train_embedding_serialization_factor,
+        #"ipu_start_number": config.train_ipu_start_number
+    }
+
+    train_ipu_config = EasyDict(train_ipu_config)
+    model = PipelinedElectraForTokenClassification.from_pretrained_transformers(config.train_config.model_name_or_path, train_ipu_config, config)
+
+    model.parallelize().half().train()
+
+    train_global_batch_size = config.train_config.train_global_batch_size
+    train_micro_batch_size = config.train_config.train_micro_batch_size
+    train_replication_factor = config.train_config.train_replication_factor
+    gradient_accumulation = int(train_global_batch_size / train_micro_batch_size / train_replication_factor)
+    train_device_iterations = config.train_config.train_device_iterations
+    train_samples_per_iteration = train_global_batch_size * train_device_iterations
+    num_epochs = config.train_config.num_epochs
+
+    train_opts = ipu_options(gradient_accumulation, train_replication_factor, train_device_iterations, train_option=True)
+
+    opitmizer = get_optimizer(model)
+
+    train_model = poptorch.trainingModel(model, train_opts, optimizers)
+
+    dl = poptorch.DataLoader(dataset, train_opts,)
+    
 
     
 
-
-    dataset = load_dataset()
-
-
-    train()
-
+    #Training
+    
+    
+    
+    
+    
+ 
+    
 
 
 if __name__ == "__main__":

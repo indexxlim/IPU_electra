@@ -3,7 +3,7 @@ from easydict import EasyDict
 
 import transformers
 import poptorch
-from finetune.run_squad_ipu import ipu_options
+from IPU_electra.finetune.run_korquad_ipu import ipu_options
 from pipeline_electra import PipelinedElectraForQuestionAnswering
 
 
