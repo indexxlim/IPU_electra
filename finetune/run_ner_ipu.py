@@ -166,22 +166,16 @@ def valid(model, opts, val_dl, samples_per_iteration):
 
 
 def main():
+    #config setting
     config_file = "finetune/ner_configurations.yaml"
     config = EasyDict(yaml.load(open(config_file).read(), Loader=yaml.loader))
 
-    #data_path
-    dataset = NERDataset(config.train_data_path)
     train_ipu_config = {
         "layer_per_ipu": config.train_config.train_layers_per_ipu,
         "recompute_checkpoint_every_layer": config.train_config.train_recopmute_checkpoint_every_layer,
         "embedding_serialization_factor": config.train_config.train_embedding_serialization_factor,
         #"ipu_start_number": config.train_ipu_start_number
     }
-
-    train_ipu_config = EasyDict(train_ipu_config)
-    model = PipelinedElectraForTokenClassification.from_pretrained_transformers(config.train_config.model_name_or_path, train_ipu_config, config)
-
-    model.parallelize().half().train()
 
     train_global_batch_size = config.train_config.train_global_batch_size
     train_micro_batch_size = config.train_config.train_micro_batch_size
@@ -191,20 +185,34 @@ def main():
     train_samples_per_iteration = train_global_batch_size * train_device_iterations
     num_epochs = config.train_config.num_epochs
 
+    #init dataloader
+    nerdataset = NERDataset(config.train_data_path)
+    sequence_length = config.train_config.sequence_length
     train_opts = ipu_options(gradient_accumulation, train_replication_factor, train_device_iterations, train_option=True)
 
+    train_dl = poptorch.DataLoader(nerdataset,
+                                   train_opts,
+                                   batch_size=train_micro_batch_size,
+                                   shuffle=True,
+                                   drop_last=False)
+
+
+    #ELECTRA model 
+    train_ipu_config = EasyDict(train_ipu_config)
+    model = PipelinedElectraForTokenClassification.from_pretrained_transformers(config.train_config.model_name_or_path, train_ipu_config, config)
+
+    model.parallelize().half().train()
+
+
+    #training
+
     opitmizer = get_optimizer(model)
-
-    train_model = poptorch.trainingModel(model, train_opts, optimizers)
-
-    dl = poptorch.DataLoader(dataset, train_opts,)
+    train_model = poptorch.trainingModel(model, train_opts, opitmizer)
     
 
-    
 
-    #Training
-    
-    
+
+   
     
     
     

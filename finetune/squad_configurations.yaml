@@ -6,7 +6,7 @@ train_config:
   train_replication_factor: 1
   train_device_iterations: 1
   num_epochs: 5
-  sequence_length: 384
+  sequence_length: 512
   train_layers_per_ipu: [2,3,4,3]
   train_recompute_checkpoint_every_layer: True
   train_embedding_serialization_factor: 1
