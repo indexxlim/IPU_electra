@@ -3,7 +3,6 @@ import json
 import collections
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
-from logging import logger
 
 import pandas as pd
 import numpy as np

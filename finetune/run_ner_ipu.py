@@ -13,7 +13,7 @@ import popart
 import poptorch
 
 from pipeline_electra import PipelinedElectraForTokenClassification
-from dataloader_ner import NERDataset, NERCollator
+from finetune.dataloader_ner import NERDataset, NERCollator
 
 '''
 Set Option
@@ -187,9 +187,8 @@ def main():
 
     #init dataloader
     nerdataset = NERDataset(config.train_data_path)
-    sequence_length = config.train_config.sequence_length
-    train_opts = ipu_options(gradient_accumulation, train_replication_factor, train_device_iterations, train_option=True)
 
+    train_opts = ipu_options(gradient_accumulation, train_replication_factor, train_device_iterations, train_option=True)
     train_dl = poptorch.DataLoader(nerdataset,
                                    train_opts,
                                    batch_size=train_micro_batch_size,
@@ -208,16 +207,8 @@ def main():
 
     opitmizer = get_optimizer(model)
     train_model = poptorch.trainingModel(model, train_opts, opitmizer)
-    
 
-
-
-   
-    
-    
-    
- 
-    
+    train(train_model, train_opts, opitmizer, train_dl, num_epochs, train_samples_per_iteration)
 
 
 if __name__ == "__main__":
